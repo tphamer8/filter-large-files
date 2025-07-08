@@ -1,0 +1,4 @@
+# Ignore sensitvie files
+credentials.json
+.venv
+.xlsx
