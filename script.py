@@ -1,5 +1,6 @@
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import re
 
 def filter_links(spreadsheet):
     source_ws = spreadsheet.worksheet('500 largest files')
@@ -123,6 +124,63 @@ def filter_links(spreadsheet):
 
     print(f"✅ {len(image_rows)} image rows copied to 'Images'. Checkboxes added in '500 largest files'.")
 
+def write_image_titles(spreadsheet):
+    source_ws = spreadsheet.worksheet('Images')
+    all_values = source_ws.get_all_values()
+    headers = all_values[0]
+
+    try:
+        location_index = headers.index("Location")
+    except ValueError:
+        print("No 'Location' column found.")
+        return
+
+    # Add "Title" column if not present
+    if "Title" not in headers:
+        headers.append("Title")
+        source_ws.update('A1', [headers])  # update the first row with new headers
+        title_index = len(headers) - 1
+    else:
+        title_index = headers.index("Title")
+
+    # Collect values to update
+    updated_values = []
+    for row in all_values[1:]:
+        url = row[location_index].strip() if len(row) > location_index else ""
+        match = re.search(r'/([^/]+)\.(jpg|jpeg|png|webp)$', url, re.IGNORECASE)
+        title = match.group(1) if match else ""
+
+        # Pad the row if it's too short
+        while len(row) <= title_index:
+            row.append("")
+
+        row[title_index] = title
+        updated_values.append(row)
+
+    # Write back only the data rows
+    start_cell = f"A2"
+    source_ws.update(start_cell, updated_values)
+    print("Image titles written successfully.")
+
+    source_ws = spreadsheet.worksheet('Images')
+    all_values = source_ws.get_all_values()
+    headers = all_values[0]
+    data_rows = all_values[1:]
+
+    try:
+        location_index = headers.index("Location")
+    except ValueError:
+        print("No 'Location' column found.")
+        return
+
+    for row in data_rows:
+        if len(row) > location_index:
+            url = row[location_index].strip()
+            # Match the filename without extension
+            match = re.search(r'/([^/]+)\.(jpg|jpeg|png|webp)$', url, re.IGNORECASE)
+            if match:
+                print(match.group(1))  # Prints filename without extension
+
 # Authenticate and run
 def authenticate_google_sheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -136,7 +194,8 @@ def open_spreadsheet(client, spreadsheet_name):
 def main():
     client = authenticate_google_sheet()
     spreadsheet = open_spreadsheet(client, 'Media Library Audit - April 2025')
-    filter_links(spreadsheet)
+    # filter_links(spreadsheet)
+    write_image_titles(spreadsheet)
 
 if __name__ == "__main__":
     main()
