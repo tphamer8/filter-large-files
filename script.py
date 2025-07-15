@@ -597,7 +597,7 @@ def download_image(spreadsheet):
     max_size = (2000, 2000)  # Fit within 2000x2000 box
 
     for row_idx, row in enumerate(rows, start=2):
-        if row.get('Download', '').strip().lower() == 'pending':
+        if row.get('Download', '').strip().lower() == 'pending' or row.get('Download', '').strip().lower() == 'p':
             url = row.get('Location', '').strip()
             if not url:
                 continue
