@@ -1,6 +1,14 @@
 import gspread
+import requests
 from oauth2client.service_account import ServiceAccountCredentials
 import re
+import os
+import time
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+from urllib.parse import unquote, urlparse
 
 def filter_links(spreadsheet):
     source_ws = spreadsheet.worksheet('500 largest files')
@@ -181,21 +189,420 @@ def write_image_titles(spreadsheet):
             if match:
                 print(match.group(1))  # Prints filename without extension
 
+
+    """
+    Downloads images from the 'Location' column for rows marked 'true' in the 'Download' column.
+    Saves the images to the specified output folder.
+    """
+    # Define the output folder path
+    home_dir = os.path.expanduser("~")  # Get the user's home directory
+    output_folder = os.path.join(home_dir, "Documents", "Stanford Webmaster Files", "Images", "Downloaded Images")
+
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Fetch all rows from the spreadsheet
+    data_rows = spreadsheet.get_all_values()
+    headers = data_rows[0]
+
+    # Find indices for 'Download' and 'Location' columns
+    try:
+        download_index = headers.index('Download')
+        location_index = headers.index('Location')
+    except ValueError as e:
+        print(f"❌ Required column missing: {e}")
+        return
+
+    # Iterate through rows and download images
+    for row_num, row in enumerate(data_rows[1:], start=2):  # Skip header, start row_num at 2
+        if len(row) > download_index and row[download_index].strip().lower() == 'true':
+            if len(row) > location_index:
+                image_url = row[location_index].strip()
+                if image_url:
+                    try:
+                        # Fetch the image
+                        response = requests.get(image_url, stream=True)
+                        response.raise_for_status()  # Raise an error for bad responses
+
+                        # Extract the filename from the URL
+                        filename = os.path.basename(image_url)
+                        if not filename:  # Handle cases where the URL doesn't have a valid filename
+                            filename = f"image_{row_num}.jpg"
+                        output_path = os.path.join(output_folder, filename)
+
+                        # Save the image
+                        with open(output_path, "wb") as file:
+                            file.write(response.content)
+                        print(f"✅ Row {row_num}: Downloaded {filename} to {output_path}")
+                    except Exception as e:
+                        print(f"❌ Row {row_num}: Failed to download {image_url}: {e}")
+                else:
+                    print(f"⚠️ Row {row_num}: No URL found in 'Location' column.")
+        else:
+            print(f"⚠️ Row {row_num}: 'Download' not marked as true.")
+
+
+    # Define the output folder path
+    home_dir = os.path.expanduser("~")  # Get the user's home directory
+    output_folder = os.path.join(home_dir, "Documents", "Stanford Webmaster Files", "Images", "Downloaded Images")
+
+    # Authenticate and open the spreadsheet
+    data_rows = spreadsheet.get_all_values()
+    headers = data_rows[0]
+    download_index = headers.index('Download')  # Find the column index for 'Download'
+
+    # Find indices for 'Location' and 'Download'
+    try:
+        download_index = headers.index('Download')
+        location_index = headers.index('Location')
+    except ValueError:
+        print("Required columns not found in the spreadsheet.")
+        return
+
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    for row in data_rows[1:]: # skip header
+        if len(row) > download_index and row[download_index].strip().lower() == 'true':
+            image_url = row[headers.index('Location')].strip()
+            if image_url:
+
+                try:
+                    # Fetch the image
+                    response = requests.get(image_url, stream=True)
+                    response.raise_for_status()  # Raise an error for bad responses
+
+                    # Extract the filename from the URL
+                    filename = os.path.basename(image_url)
+                    output_path = os.path.join(output_folder, filename)
+
+                    # Save the image
+                    with open(output_path, "wb") as file:
+                        file.write(response.content)
+                    print(f"✅ Downloaded: {filename} to {output_path}")
+                except Exception as e:
+                    print(f"❌ Failed to download {image_url}: {e}")
+
+
+    """
+    Downloads images from the 'Location' column for rows marked 'true' in the 'Download' column.
+    Saves the images to the specified output folder.
+    """
+    # Define the output folder path
+    home_dir = os.path.expanduser("~")
+    output_folder = os.path.join(home_dir, "Documents", "Stanford Webmaster Files", "Images", "Downloaded Images")
+
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Fetch all rows from the Images worksheet
+    try:
+        images_ws = spreadsheet.worksheet('Images')
+        data_rows = images_ws.get_all_values()
+        headers = data_rows[0]
+    except gspread.exceptions.WorksheetNotFound:
+        print("❌ 'Images' worksheet not found. Run filter_links() first.")
+        return
+
+    # Find indices for 'Download' and 'Location' columns
+    try:
+        download_index = headers.index('Download')
+        location_index = headers.index('Location')
+    except ValueError as e:
+        print(f"❌ Required column missing: {e}")
+        return
+
+    # Iterate through rows and download images
+    downloaded_count = 0
+    for row_num, row in enumerate(data_rows[1:], start=2):
+        if len(row) > download_index and row[download_index].strip().lower() == 'true':
+            if len(row) > location_index:
+                image_url = row[location_index].strip()
+                if image_url:
+                    try:
+                        # Fetch the image
+                        response = requests.get(image_url, stream=True, timeout=30)
+                        response.raise_for_status()
+
+                        # Extract the filename from the URL
+                        filename = os.path.basename(image_url)
+                        if not filename or '.' not in filename:
+                            filename = f"image_{row_num}.jpg"
+                        
+                        output_path = os.path.join(output_folder, filename)
+
+                        # Save the image
+                        with open(output_path, "wb") as file:
+                            file.write(response.content)
+                        
+                        print(f"✅ Row {row_num}: Downloaded {filename}")
+                        downloaded_count += 1
+                        
+                    except Exception as e:
+                        print(f"❌ Row {row_num}: Failed to download {image_url}: {e}")
+                else:
+                    print(f"⚠️ Row {row_num}: No URL found in 'Location' column.")
+
+    print(f"📊 Total images downloaded: {downloaded_count}")
+
+
+    """
+    Downloads images from the 'Location' column for rows marked 'true' in the 'Download' column.
+    Saves the images to the specified output folder.
+    """
+    # Define the output folder path
+    home_dir = os.path.expanduser("~")
+    output_folder = os.path.join(home_dir, "Documents", "Stanford Webmaster Files", "Images", "Downloaded Images")
+
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Fetch all rows from the Images worksheet
+    try:
+        images_ws = spreadsheet.worksheet('Images')
+        data_rows = images_ws.get_all_values()
+        headers = data_rows[0]
+    except gspread.exceptions.WorksheetNotFound:
+        print("❌ 'Images' worksheet not found. Run filter_links() first.")
+        return
+
+    # Find indices for 'Download' and 'Location' columns
+    try:
+        download_index = headers.index('Download')
+        location_index = headers.index('Location')
+    except ValueError as e:
+        print(f"❌ Required column missing: {e}")
+        return
+
+    # Iterate through rows and download images
+    downloaded_count = 0
+    for row_num, row in enumerate(data_rows[1:], start=2):
+        if len(row) > download_index and row[download_index].strip().lower() == 'true':
+            if len(row) > location_index:
+                image_url = row[location_index].strip()
+                if image_url:
+                    try:
+                        # Fetch the image
+                        response = requests.get(image_url, stream=True, timeout=30)
+                        response.raise_for_status()
+
+                        # Extract the filename from the URL
+                        filename = os.path.basename(image_url)
+                        if not filename or '.' not in filename:
+                            filename = f"image_{row_num}.jpg"
+                        
+                        output_path = os.path.join(output_folder, filename)
+
+                        # Save the image
+                        with open(output_path, "wb") as file:
+                            file.write(response.content)
+                        
+                        print(f"✅ Row {row_num}: Downloaded {filename}")
+                        downloaded_count += 1
+                        
+                    except Exception as e:
+                        print(f"❌ Row {row_num}: Failed to download {image_url}: {e}")
+                else:
+                    print(f"⚠️ Row {row_num}: No URL found in 'Location' column.")
+
+    print(f"📊 Total images downloaded: {downloaded_count}")
+
+
+    # Set Download Directory
+    download_dir = "/Users/tpham/Documents/Stanford Webmaster Files/File Reuploads/Automated Downloads"
+    os.makedirs(download_dir, exist_ok=True)
+
+    # Set up sheet tab
+    old_files = spreadsheet.worksheet('Old Files')  # Access "Old Files" sheet
+    rows = old_files.get_all_records()
+
+    # Loop through the sheet
+    for row_idx, row in enumerate(rows, start=2):
+        if row['Type'] == 'PDF' and row['Status'] == 'Pending':
+            url = row['URL']
+            filename = os.path.join(download_dir, getFileName(url))
+            try:
+                response = requests.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+                }, stream=True)
+
+                if response.status_code == 200:
+                    with open(filename, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    print(f"Downloaded: {filename}")
+                    old_files.update_cell(row_idx, 5, 'Downloaded')
+                else:
+                    print(f"Failed to download. Status code: {response.status_code}")
+                    old_files.update_cell(row_idx, 5, 'Failed')
+
+            except Exception as e:
+                print(f"Error downloading: {e}")
+    """
+    Downloads images using Selenium to bypass 403 restrictions.
+    """
+    # Define the output folder path
+    home_dir = os.path.expanduser("~")
+    output_folder = os.path.join(home_dir, "Documents", "Stanford Webmaster Files", "Images", "Downloaded Images")
+    
+    # Ensure the output folder exists
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Fetch all rows from the Images worksheet
+    try:
+        images_ws = spreadsheet.worksheet('Images')
+        data_rows = images_ws.get_all_values()
+        headers = data_rows[0]
+    except gspread.exceptions.WorksheetNotFound:
+        print("❌ 'Images' worksheet not found. Run filter_links() first.")
+        return
+
+    # Find indices for 'Download' and 'Location' columns
+    try:
+        download_index = headers.index('Download')
+        location_index = headers.index('Location')
+    except ValueError as e:
+        print(f"❌ Required column missing: {e}")
+        return
+
+    # Set up Chrome options
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")  # Run in background
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+    # Initialize the driver
+    try:
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        print("✅ Chrome driver initialized successfully")
+    except Exception as e:
+        print(f"❌ Failed to initialize Chrome driver: {e}")
+        return
+
+    downloaded_count = 0
+    
+    try:
+        # Iterate through rows and download images
+        for row_num, row in enumerate(data_rows[1:], start=2):
+            if len(row) > download_index and row[download_index].strip().lower() == 'true':
+                if len(row) > location_index:
+                    image_url = row[location_index].strip()
+                    if image_url:
+                        try:
+                            print(f"🔄 Row {row_num}: Attempting to download {image_url}")
+                            
+                            # Navigate to the image URL
+                            driver.get(image_url)
+                            time.sleep(2)  # Wait for page to load
+                            
+                            # Get cookies from the browser session
+                            cookies = driver.get_cookies()
+                            
+                            # Create a cookie jar for requests
+                            cookie_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+                            
+                            # Extract filename from URL
+                            filename = os.path.basename(image_url.split('?')[0])
+                            if not filename or '.' not in filename:
+                                filename = f"image_{row_num}.jpg"
+                            
+                            output_path = os.path.join(output_folder, filename)
+                            
+                            # Download using requests with cookies from Selenium
+                            headers_for_request = {
+                                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                                'Referer': image_url
+                            }
+                            
+                            response = requests.get(
+                                image_url,
+                                headers=headers_for_request,
+                                cookies=cookie_dict,
+                                stream=True,
+                                timeout=30
+                            )
+                            response.raise_for_status()
+                            
+                            # Save the image
+                            with open(output_path, "wb") as file:
+                                for chunk in response.iter_content(chunk_size=8192):
+                                    file.write(chunk)
+                            
+                            print(f"✅ Row {row_num}: Downloaded {filename}")
+                            downloaded_count += 1
+                            
+                            # Small delay between downloads
+                            time.sleep(1)
+                            
+                        except Exception as e:
+                            print(f"❌ Row {row_num}: Failed to download {image_url}: {e}")
+                    else:
+                        print(f"⚠️ Row {row_num}: No URL found in 'Location' column.")
+    
+    finally:
+        # Always close the driver
+        driver.quit()
+        print(f"📊 Total images downloaded: {downloaded_count}")
+
+def download_image(spreadsheet):
+    # Set Download Directory
+    download_dir = "/Users/tpham/Documents/Stanford Webmaster Files/Images/Automated Downloads"
+    os.makedirs(download_dir, exist_ok=True)
+
+    # Set up sheet tab
+    image_links = spreadsheet.worksheet('Images')  # Access "Old Files" sheet
+    rows = image_links.get_all_records()
+
+    # Loop through the sheet
+    for row_idx, row in enumerate(rows, start=2):
+        if row['Download'] == 'Pending':
+            url = row['Location']
+            filename = os.path.join(download_dir, getFileName(url))
+            try:
+                response = requests.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
+                }, stream=True)
+
+                if response.status_code == 200:
+                    with open(filename, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    print(f"Downloaded: {filename}")
+                    image_links.update_cell(row_idx, 6, 'Downloaded')
+                else:
+                    print(f"Failed to download. Status code: {response.status_code}")
+                    image_links.update_cell(row_idx, 6, 'Failed')
+
+            except Exception as e:
+                print(f"Error downloading: {e}")
+
+def getFileName(url):
+    path = urlparse(url).path
+    filename = os.path.basename(path)
+    return unquote(filename)
+
 # Authenticate and run
 def authenticate_google_sheet():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
-    client = gspread.authorize(creds)
+    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+    credentials = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+    client = gspread.authorize(credentials)
     return client
 
-def open_spreadsheet(client, spreadsheet_name):
-    return client.open(spreadsheet_name)
+def open_spreadsheet(client, sheet_name):
+    return client.open(sheet_name)
 
 def main():
     client = authenticate_google_sheet()
     spreadsheet = open_spreadsheet(client, 'Media Library Audit - April 2025')
+    
+    # Uncomment the functions you want to run:
     # filter_links(spreadsheet)
-    write_image_titles(spreadsheet)
+    # write_image_titles(spreadsheet)
+    download_image(spreadsheet)
 
 if __name__ == "__main__":
     main()
