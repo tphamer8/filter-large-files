@@ -9,6 +9,9 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from urllib.parse import unquote, urlparse
+from PIL import Image
+from io import BytesIO
+
 
 def filter_links(spreadsheet):
     source_ws = spreadsheet.worksheet('500 largest files')
@@ -548,7 +551,7 @@ def write_image_titles(spreadsheet):
         driver.quit()
         print(f"📊 Total images downloaded: {downloaded_count}")
 
-def download_image(spreadsheet):
+
     # Set Download Directory
     download_dir = "/Users/tpham/Documents/Stanford Webmaster Files/Images/Automated Downloads"
     os.makedirs(download_dir, exist_ok=True)
@@ -579,6 +582,57 @@ def download_image(spreadsheet):
 
             except Exception as e:
                 print(f"Error downloading: {e}")
+
+def download_image(spreadsheet):
+
+    # Set Download Directory
+    download_dir = "/Users/tpham/Documents/Stanford Webmaster Files/Images/Automated Downloads"
+    os.makedirs(download_dir, exist_ok=True)
+
+    # Set up sheet tab
+    image_links = spreadsheet.worksheet('Images')
+    rows = image_links.get_all_records()
+
+    # Resize settings
+    max_size = (2000, 2000)  # Fit within 2000x2000 box
+
+    for row_idx, row in enumerate(rows, start=2):
+        if row.get('Download', '').strip().lower() == 'pending':
+            url = row.get('Location', '').strip()
+            if not url:
+                continue
+
+            try:
+                response = requests.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+                }, stream=True, timeout=30)
+
+                if response.status_code == 200:
+                    # Open image from stream
+                    image = Image.open(BytesIO(response.content))
+                    image.thumbnail(max_size)  # Resize while keeping aspect ratio
+
+                    # Force save as JPEG
+                    base_filename = os.path.splitext(getFileName(url))[0]
+                    output_path = os.path.join(download_dir, f"{base_filename}.jpg")
+
+                    # Convert to RGB if not JPEG-compatible
+                    if image.mode in ("RGBA", "P"):  # Handle transparency or palettes
+                        image = image.convert("RGB")
+
+                    # Save with JPEG compression
+                    image.save(output_path, format='JPEG', quality=85, optimize=True)
+                    print(f"✅ Downloaded and resized: {output_path}")
+
+                    # Mark as downloaded
+                    image_links.update_cell(row_idx, 6, 'Downloaded')
+                else:
+                    print(f"❌ Failed to download (status {response.status_code}): {url}")
+                    image_links.update_cell(row_idx, 6, 'Failed')
+
+            except Exception as e:
+                print(f"❌ Error downloading {url}: {e}")
+                image_links.update_cell(row_idx, 6, 'Failed')
 
 def getFileName(url):
     path = urlparse(url).path
