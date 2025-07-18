@@ -583,7 +583,7 @@ def write_image_titles(spreadsheet):
             except Exception as e:
                 print(f"Error downloading: {e}")
 
-def download_image(spreadsheet):
+# def download_image(spreadsheet):
 
     # Set Download Directory
     download_dir = "/Users/tpham/Documents/Stanford Webmaster Files/Images/Automated Downloads"
@@ -621,10 +621,77 @@ def download_image(spreadsheet):
                         image = image.convert("RGB")
 
                     # Save with JPEG compression
-                    image.save(output_path, format='JPEG', quality=85, optimize=True)
+                    image.save(output_path, format='JPEG', quality=95, optimize=True)
                     print(f"✅ Downloaded and resized: {output_path}")
 
                     # Mark as downloaded
+                    image_links.update_cell(row_idx, 6, 'Downloaded')
+                else:
+                    print(f"❌ Failed to download (status {response.status_code}): {url}")
+                    image_links.update_cell(row_idx, 6, 'Failed')
+
+            except Exception as e:
+                print(f"❌ Error downloading {url}: {e}")
+                image_links.update_cell(row_idx, 6, 'Failed')
+
+def download_image(spreadsheet):
+    import os
+    import requests
+    from urllib.parse import urlparse, unquote
+    from PIL import Image
+    from io import BytesIO
+
+    # Set Download Directory
+    download_dir = "/Users/tpham/Documents/Stanford Webmaster Files/Images/Automated Downloads"
+    os.makedirs(download_dir, exist_ok=True)
+
+    # Set up sheet tab
+    image_links = spreadsheet.worksheet('Images')
+    rows = image_links.get_all_records()
+
+    # Resize settings
+    max_size = (2000, 2000)  # Fit within 2000x2000 box
+
+    for row_idx, row in enumerate(rows, start=2):
+        if row.get('Download', '').strip().lower() in ['pending', 'p', 'true']:
+            url = row.get('Location', '').strip()
+            if not url:
+                continue
+
+            try:
+                response = requests.get(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+                }, stream=True, timeout=30)
+
+                if response.status_code == 200:
+                    # Open image from stream
+                    image = Image.open(BytesIO(response.content))
+                    icc_profile = image.info.get("icc_profile")  # Try to retain ICC color profile
+                    image.thumbnail(max_size)  # Resize while keeping aspect ratio
+
+                    # Extract file name and extension
+                    parsed_url = urlparse(url)
+                    base_filename = os.path.splitext(os.path.basename(parsed_url.path))[0]
+                    original_ext = os.path.splitext(parsed_url.path)[1].lower()
+                    output_path = os.path.join(download_dir, base_filename + original_ext)
+
+                    # Convert if saving as JPEG and incompatible mode
+                    if original_ext in ['.jpg', '.jpeg'] and image.mode not in ("RGB", "L"):
+                        image = image.convert("RGB")
+
+                    # Save image with proper format and ICC profile if available
+                    save_args = {"optimize": True}
+                    if original_ext in ['.jpg', '.jpeg']:
+                        save_args["format"] = 'JPEG'
+                        save_args["quality"] = 95
+                        if icc_profile:
+                            save_args["icc_profile"] = icc_profile
+                    else:
+                        save_args["format"] = image.format or "PNG"  # fallback
+
+                    image.save(output_path, **save_args)
+
+                    print(f"✅ Downloaded and resized: {output_path}")
                     image_links.update_cell(row_idx, 6, 'Downloaded')
                 else:
                     print(f"❌ Failed to download (status {response.status_code}): {url}")
